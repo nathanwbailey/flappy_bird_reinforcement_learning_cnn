@@ -9,7 +9,7 @@ class CacheRecall():
     def cache(self, data):
         self.memory.append(data)
 
-    def sample(self, batch_size):
+    def recall(self, batch_size):
         return random.sample(self.memory, batch_size)
     
     def __len__(self):
