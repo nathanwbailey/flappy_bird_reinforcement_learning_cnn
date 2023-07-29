@@ -40,10 +40,10 @@ class Agent():
     def preprocess_image(self, img):
         img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         img = cv2.flip(img,1)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = img[:-52, ...]
         img = cv2.resize(img, (80, 80))
         img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        _, img = cv2.threshold(img,1,255,cv2.THRESH_BINARY)
         img = img[..., np.newaxis]
         img = torch.FloatTensor(img)
         img = img.permute(2, 0, 1)
