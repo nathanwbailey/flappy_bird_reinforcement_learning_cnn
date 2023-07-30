@@ -65,7 +65,7 @@ class Agent():
             means = torch.cat((torch.zeros(99), means))
             plt.plot(means.numpy())
         plt.pause(0.001)  # pause a bit so that plots are updated
-        plt.savefig('trainingv2.png')
+        plt.savefig('trainingv2_1.png')
 
     @torch.no_grad()
     def take_action(self, state):
