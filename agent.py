@@ -28,8 +28,8 @@ class Agent():
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.episode_durations = []
         self.cache_recall = CacheRecall.CacheRecall(memory_size=MEMORY_SIZE)
-        self.policy_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim)
-        self.target_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim)
+        self.policy_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim).to(self.device)
+        self.target_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim).to(self.device)
         for param in self.target_net.parameters():
             param.requires_grad = False
         self.target_net.load_state_dict(self.policy_net.state_dict())
