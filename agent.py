@@ -16,7 +16,7 @@ class Agent():
         self.BATCH_SIZE = BATCH_SIZE
         self.MEMORY_SIZE = MEMORY_SIZE
         self.GAMMA = GAMMA
-        self.input_dim = self.preprocess_image(example_image).size()[0]
+        self.input_dim = self.preprocess_image(example_image).size()[0]*4
         self.output_dim = output_dim
         self.action_dim = action_dim
         self.action_dict = action_dict
@@ -28,8 +28,8 @@ class Agent():
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.episode_durations = []
         self.cache_recall = CacheRecall.CacheRecall(memory_size=MEMORY_SIZE)
-        self.policy_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim)
-        self.target_net = model.FlappyNet(input_dim=self.input_dim, output_dim=self.output_dim)
+        self.policy_net = model.FlappyNetv2(input_dim=4, output_dim=self.output_dim).to(self.device)
+        self.target_net = model.FlappyNetv2(input_dim=4, output_dim=self.output_dim).to(self.device)
         for param in self.target_net.parameters():
             param.requires_grad = False
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -44,9 +44,10 @@ class Agent():
         img = cv2.resize(img, (80, 80))
         img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         _, img = cv2.threshold(img,1,255,cv2.THRESH_BINARY)
-        img = img[..., np.newaxis]
+        #img = img[..., np.newaxis]
+        #print(img.shape)
         img = torch.FloatTensor(img)
-        img = img.permute(2, 0, 1)
+        #img = img.permute(2, 0, 1)
         return img
 
 
@@ -65,7 +66,7 @@ class Agent():
             means = torch.cat((torch.zeros(99), means))
             plt.plot(means.numpy())
         plt.pause(0.001)  # pause a bit so that plots are updated
-        plt.savefig('training.png')
+        plt.savefig('trainingv2.png')
 
     @torch.no_grad()
     def take_action(self, state):
@@ -94,15 +95,14 @@ class Agent():
         batch = self.cache_recall.recall(self.BATCH_SIZE)
         batch = [*zip(*batch)]
         state = torch.stack(batch[0])
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch[1])), device=self.device, dtype=torch.bool)
+        next_state = torch.stack(batch[1])
         #Grab the next states that are not final states
         non_final_next_states = torch.stack([s for s in batch[1] if s is not None])
         action = torch.stack(batch[2])
         reward = torch.cat(batch[3])
-        next_state_action_values = torch.zeros(self.BATCH_SIZE, dtype=torch.float32, device=self.device)
         state_action_values = self.policy_net(state).gather(1, action)
         with torch.no_grad():
-            next_state_action_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
+            next_state_action_values = self.target_net(next_state).max(1)[0]
         expected_state_action_values = (next_state_action_values * self.GAMMA) + reward
         loss_fn = torch.nn.SmoothL1Loss()
         loss = loss_fn(state_action_values, expected_state_action_values.unsqueeze(1))
@@ -116,6 +116,7 @@ class Agent():
             env.reset_game()
             state = env.getScreenRGB()
             state = self.preprocess_image(state).to(self.device)
+            state = torch.stack((state, state, state, state), dim=0)
             for c in count():
                 action = self.take_action(state)
                 reward = env.act(self.action_dict[action])
@@ -123,11 +124,14 @@ class Agent():
                 action = torch.tensor([action], device=self.device)
                 next_state = env.getScreenRGB()
                 next_state = self.preprocess_image(next_state).to(self.device)
+                next_state = torch.cat((next_state.unsqueeze(0), state[:3, :, :]), dim=0).to(self.device)
                 done = env.game_over()
-                if done:
-                    next_state = None
+                #if done:
+                    #next_state = None
+                if len(self.cache_recall) >= self.MEMORY_SIZE:
+                    self.cache_recall.memory.popleft()
                 self.cache_recall.cache((state, next_state, action, reward, done))
-                state = next_state
+                state=next_state
                 self.optimize_model()
                 self.update_target_network()
                 pg.display.update()
@@ -139,7 +143,7 @@ class Agent():
                     print("EPS: {}".format(self.eps))
                     print("Durations: {}".format(c+1))
                     print("Score: {}".format(env.score()))
-                    torch.save(self.target_net.state_dict(), 'target_net.pt')
-                    torch.save(self.policy_net.state_dict(), 'policy_net.pt')
+                    torch.save(self.target_net.state_dict(), 'target_netv2.pt')
+                    torch.save(self.policy_net.state_dict(), 'policy_netv2.pt')
                     #Start a new episode
                     break
