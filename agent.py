@@ -154,6 +154,7 @@ class Agent():
                         state_in = "explore"
                     else:
                         state_in = "train"
+                    print("State: {}".format(state_in))
                     torch.save(self.target_net.state_dict(), 'target_netv2.pt')
                     torch.save(self.policy_net.state_dict(), 'policy_netv2.pt')
                     #Start a new episode
