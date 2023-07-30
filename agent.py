@@ -12,7 +12,7 @@ import cv2
 
 class Agent():
 
-    def __init__(self, BATCH_SIZE, MEMORY_SIZE, GAMMA, example_image, output_dim, action_dim, action_dict, EPS_START, EPS_END, EPS_DECAY_VALUE, lr, TAU) -> None:
+    def __init__(self, BATCH_SIZE, MEMORY_SIZE, GAMMA, example_image, output_dim, action_dim, action_dict, EPS_START, EPS_END, EPS_DECAY_VALUE, lr, TAU, OBSERVE, EXPLORE) -> None:
         self.BATCH_SIZE = BATCH_SIZE
         self.MEMORY_SIZE = MEMORY_SIZE
         self.GAMMA = GAMMA
@@ -25,6 +25,8 @@ class Agent():
         self.EPS_DECAY_VALUE=EPS_DECAY_VALUE
         self.eps=EPS_START
         self.TAU=TAU
+        self.OBSERVE = OBSERVE
+        self.EXPLORE = EXPLORE
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.episode_durations = []
         self.cache_recall = CacheRecall.CacheRecall(memory_size=MEMORY_SIZE)
@@ -35,6 +37,7 @@ class Agent():
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=lr, amsgrad=True)
         self.steps_done = 0
+        self.global_steps_done = 0
 
 
     def preprocess_image(self, img):
@@ -69,13 +72,13 @@ class Agent():
 
     @torch.no_grad()
     def take_action(self, state):
-        self.eps = self.eps*self.EPS_DECAY_VALUE
-        self.eps = max(self.eps, self.EPS_END)
         if self.eps < np.random.rand():
             state = state.unsqueeze(0)
             action_idx = torch.argmax(self.policy_net(state), dim=1).item()
         else:
             action_idx = random.randint(0, self.action_dim-1)
+        if self.eps > self.EPS_END and self.global_steps_done > self.OBSERVE:
+            self.eps = self.eps - (self.EPS_START-self.EPS_END) / self.EXPLORE
         self.steps_done+=1
         return action_idx
 
@@ -112,6 +115,7 @@ class Agent():
 
     def train(self, episodes, env):
         self.steps_done = 0
+        self.global_steps_done = 0
         for episode in range(episodes):
             env.reset_game()
             state = env.getScreenRGB()
@@ -130,8 +134,10 @@ class Agent():
                     self.cache_recall.memory.popleft()
                 self.cache_recall.cache((state, next_state, action, reward, done))
                 state = next_state
-                self.optimize_model()
-                self.update_target_network()
+                if self.global_steps_done > self.OBSERVE:
+                    self.optimize_model()
+                    self.update_target_network()                
+                self.global_steps_done += 1
                 pg.display.update()
                 if done:
                     #Update the number of durations for the episode
@@ -141,6 +147,13 @@ class Agent():
                     print("EPS: {}".format(self.eps))
                     print("Durations: {}".format(c+1))
                     print("Score: {}".format(env.score()))
+                    state_in = ""
+                    if self.global_steps_done <= self.OBSERVE:
+                        state_in = "observe"
+                    elif self.global_steps_done <= self.EXPLORE:
+                        state_in = "explore"
+                    else:
+                        state_in = "train"
                     torch.save(self.target_net.state_dict(), 'target_netv2.pt')
                     torch.save(self.policy_net.state_dict(), 'policy_netv2.pt')
                     #Start a new episode
